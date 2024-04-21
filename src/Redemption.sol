@@ -117,8 +117,41 @@ contract Redemption is ReentrancyGuard {
         }
     }
 
-    /// FIXME
-    function revoke() external nonReentrant beforeDeadline {}
+    /// @notice Revokes a set of Hashes from redemption.
+    /// @param _tokenIds The token IDs to revoke from redemption.
+    function revoke(
+        uint256[] calldata _tokenIds
+    ) external nonReentrant beforeDeadline {
+        // Iterate over the list of token IDs. The token IDs should be
+        // monotonically increasing and should refer to Hashes that have already
+        // been committed. If either of these conditions are violated, we revert.
+        // Assuming all of the conditions hold, the Hashes tokens are
+        // transferred to the revoker and the commitments are revoked.
+        uint256 lastTokenId;
+        for (uint256 i = 0; i < _tokenIds.length; i++) {
+            // Ensure that the current token ID is either the first token ID to
+            // be processed or is strictly greater than the last token ID.
+            require(
+                i == 0 || _tokenIds[i] > lastTokenId,
+                "Redemption: The token IDs aren't monotonically increasing."
+            );
+            lastTokenId = _tokenIds[i];
+
+            // Ensure that the token ID refers to a commitment owned by the
+            // sender.
+            require(
+                commitments[lastTokenId] == msg.sender,
+                "Redemption: Token ID doesn't refer to a commitment."
+            );
+
+            // Revoke the commitment.
+            totalCommitments -= 1;
+            commitments[lastTokenId] = address(0);
+
+            // Transfer the Hash to the sender.
+            hashes.transferFrom(address(this), msg.sender, lastTokenId);
+        }
+    }
 
     // FIXME
     function redeem() external nonReentrant afterDeadline {}
