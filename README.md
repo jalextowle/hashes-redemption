@@ -4,6 +4,8 @@ This repository implements a redemption contract for the HashesDAO according to 
 
 ## Usage
 
+This repository uses foundry to compile the code and run tests: https://github.com/foundry-rs/foundry.
+
 ### Build
 
 ```shell
