@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.20;
 
-import {ReentrancyGuard} from "openzeppelin/utils/ReentrancyGuard.sol";
+import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {ReentrancyGuard} from "solmate/utils/ReentrancyGuard.sol";
 import {IHashes} from "./interfaces/IHashes.sol";
 import {IHashesDAO} from "./interfaces/IHashesDAO.sol";
 
