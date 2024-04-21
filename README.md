@@ -14,6 +14,9 @@ $ forge build
 
 ### Test
 
+Since we use mainnet fork testing, you'll need to fill out the `.env_template`
+and copy it to `.env` in order to run the tests.
+
 ```shell
 $ forge test
 ```
