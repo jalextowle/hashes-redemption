@@ -94,7 +94,10 @@ contract Redemption is ReentrancyGuard {
     }
 
     /// @notice Allows the contract to receive ether before the deadline.
-    receive() external payable beforeDeadline {}
+    receive() external payable beforeDeadline {
+        // Increase the total funding by the message value.
+        totalFunding += msg.value;
+    }
 
     /// @notice Commits a set of Hashes for redemption.
     /// @param _tokenIds The token IDs to commit for redemption.

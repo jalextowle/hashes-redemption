@@ -12,6 +12,8 @@ contract RedemptionTest is Test {
     uint256 internal constant MAINNET_FORK_BLOCK = 19705328;
     string internal MAINNET_RPC_URL = vm.envString("MAINNET_RPC_URL");
 
+    address internal constant FUNDER = address(0xdeadbeef);
+
     Redemption internal redemption;
 
     function setUp() external {
@@ -20,8 +22,15 @@ contract RedemptionTest is Test {
         vm.selectFork(mainnetForkId);
         vm.rollFork(MAINNET_FORK_BLOCK);
 
-        // Deploy the Redemption contract.
+        // Deploy the redemption contract.
         redemption = new Redemption(DURATION);
+
+        // Fund the redemption contract with the expected amount of ether.
+        vm.startPrank(FUNDER);
+        uint256 fundingAmount = 542.979 ether;
+        vm.deal(FUNDER, fundingAmount);
+        (bool success, ) = address(redemption).call{value: fundingAmount}("");
+        require(success, "couldn't fund the redemption contract");
     }
 
     /// Constructor Tests ///
@@ -39,5 +48,48 @@ contract RedemptionTest is Test {
 
         // Ensure that the deadline is properly configured.
         assertEq(redemption.deadline(), currentBlockTime + duration);
+    }
+
+    /// Receive Tests ///
+
+    function test__receive__failure__afterDeadline() external {
+        // Increase the time to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Increase the funder's balance of ether.
+        vm.deal(FUNDER, 1_000e18);
+
+        // Attempting to send ether to the contract at the deadline should fail.
+        (bool success, bytes memory returndata) = address(redemption).call{
+            value: 1_000e18
+        }("");
+        assertEq(success, false);
+        assertEq(
+            returndata,
+            abi.encodeWithSelector(Redemption.AfterDeadline.selector)
+        );
+
+        // Increase the time to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Attempting to send ether to the contract after the deadline should fail.
+        (success, returndata) = address(redemption).call{value: 1_000e18}("");
+        assertEq(success, false);
+        assertEq(
+            returndata,
+            abi.encodeWithSelector(Redemption.AfterDeadline.selector)
+        );
+    }
+
+    function test__receive__success() external {
+        // Increase the funder's balance of ether.
+        vm.deal(FUNDER, 1_000e18);
+
+        // Sending ether to the contract before the deadline should succeed.
+        (bool success, ) = address(redemption).call{value: 1_000e18}("");
+        assertEq(success, true);
+
+        // The contract's total funding should be equal to its balance of ether.
+        assertEq(redemption.totalFunding(), address(redemption).balance);
     }
 }
