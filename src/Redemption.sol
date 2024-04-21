@@ -34,6 +34,10 @@ contract Redemption is ReentrancyGuard {
     ///         token ID to the address that submitted the commitment.
     mapping(uint256 => address) public commitments;
 
+    /// @notice A flag indicating whether or not unused funds have been drawn
+    ///         back to the HashesDAO.
+    bool public wasDrawn;
+
     /// @notice Instantiates the Hashes redemption contract.
     /// @param _hashes The Hashes token.
     /// @param _hashesDAO The HashesDAO.
@@ -77,11 +81,7 @@ contract Redemption is ReentrancyGuard {
     }
 
     /// @notice Allows the contract to receive ether before the deadline.
-    receive() external payable beforeDeadline {
-        // Increase the total funding amount by the ether sent in the
-        // transaction.
-        totalFunding += msg.value;
-    }
+    receive() external payable beforeDeadline {}
 
     /// @notice Commits a set of Hashes for redemption.
     /// @param _tokenIds The token IDs to commit for redemption.
@@ -180,12 +180,15 @@ contract Redemption is ReentrancyGuard {
                 commitments[lastTokenId] == msg.sender,
                 "Redemption: Token ID doesn't refer to a commitment."
             );
+
+            // Reset the commitment to prevent double spends.
+            commitments[lastTokenId] = address(0);
         }
 
-        // The amount of ether that the sender will receive is calculated as
+        // The amount of ether that the sender will receive is calculated as:
         //
         // redeemAmount = _tokenIds.length * min(
-        //     totalFunding / totalCommitments,
+        //     balance / totalCommitments,
         //     1 ether
         // )
         //
@@ -197,6 +200,39 @@ contract Redemption is ReentrancyGuard {
         );
         (bool success, ) = msg.sender.call{value: redeemAmount}("");
         require(success, "Redemption: Transfer failed.");
+    }
+
+    /// @notice Allows anyone to transfer any ether that isn't needed to process
+    ///         redemptions to the DAO.
+    function draw() external nonReentrant afterDeadline {
+        // If funds have already been drawn, we can exit early.
+        if (wasDrawn) {
+            return;
+        }
+
+        // If the price per commitment is less than one ether, all of the ether
+        // will be consumed by redemptions, and we can exit early.
+        if (totalFunding / totalCommitments < 1 ether) {
+            return;
+        }
+
+        // The amount of ether that can be returned to the DAO is given by:
+        //
+        // unusedFunds = totalFunding - totalCommitments * 1 ether
+        //
+        // If the unused funds amount is greater than zero, we transfer the
+        // unused funds to the hashes DAO.
+        uint256 redeemFunds = totalCommitments * 1 ether;
+        if (totalFunding > redeemFunds) {
+            // Set the flag to indicate that funds were drawn.
+            wasDrawn = true;
+
+            // Transfer the unused funds to the HashesDAO.
+            (bool success, ) = address(hashesDAO).call{
+                value: totalFunding - redeemFunds
+            }("");
+            require(success, "Redemption: Transfer failed.");
+        }
     }
 
     /// @dev Gets the minimum of two numbers.
