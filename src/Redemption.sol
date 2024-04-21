@@ -10,6 +10,9 @@ import {IHashesDAO} from "./interfaces/IHashesDAO.sol";
 ///         contract is funded with ether and allows Hashes tokens to be
 ///         redeemed for the funded ether before a deadline.
 contract Redemption is ReentrancyGuard {
+    /// @notice The cap for the DEX Labs Hashes.
+    uint256 public constant DEX_LABS_CAP = 99;
+
     /// @notice The Hashes contract used by this redemption contract.
     IHashes public immutable hashes;
 
@@ -105,10 +108,13 @@ contract Redemption is ReentrancyGuard {
             );
             lastTokenId = _tokenIds[i];
 
-            // Ensure that the token ID refers to an active DAO hash.
+            // Ensure that the token ID refers to an active DAO hash that is
+            // not a DEX Labs Hash.
             require(
-                lastTokenId < governanceCap && !hashes.deactivated(lastTokenId),
-                "Redemption: Token ID refers to a non-DAO hash or a deactivated DAO hash."
+                lastTokenId >= DEX_LABS_CAP &&
+                    lastTokenId < governanceCap &&
+                    !hashes.deactivated(lastTokenId),
+                "Redemption: Token ID refers to a non-DAO hash, a deactivated DAO hash, or a DEX Labs hash."
             );
 
             // Take custody of the Hashes token.
