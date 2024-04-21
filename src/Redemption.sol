@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.20;
 
-import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {ReentrancyGuard} from "solmate/utils/ReentrancyGuard.sol";
 import {IHashes} from "./interfaces/IHashes.sol";
 import {IHashesDAO} from "./interfaces/IHashesDAO.sol";
@@ -23,6 +22,9 @@ contract Redemption is ReentrancyGuard {
     ///         the hashes DAO.
     uint256 public immutable deadline;
 
+    /// @notice The total amount of ether that is eligible to be redeemed.
+    uint256 public totalFunding;
+
     /// @notice The total number of commitments that were submitted. This is
     ///         used to determine the amount of ETH that each committed Hash
     ///         should receive.
@@ -36,11 +38,7 @@ contract Redemption is ReentrancyGuard {
     /// @param _hashes The Hashes token.
     /// @param _hashesDAO The HashesDAO.
     /// @param _duration The duration of the redemption.
-    constructor(
-        IHashes _hashes,
-        IHashesDAO _hashesDAO,
-        uint256 _duration
-    ) payable {
+    constructor(IHashes _hashes, IHashesDAO _hashesDAO, uint256 _duration) {
         // Ensure that the HashesDAO address is non-zero.
         require(
             address(_hashesDAO) != address(0),
@@ -79,7 +77,11 @@ contract Redemption is ReentrancyGuard {
     }
 
     /// @notice Allows the contract to receive ether before the deadline.
-    receive() external payable beforeDeadline {}
+    receive() external payable beforeDeadline {
+        // Increase the total funding amount by the ether sent in the
+        // transaction.
+        totalFunding += msg.value;
+    }
 
     /// @notice Commits a set of Hashes for redemption.
     /// @param _tokenIds The token IDs to commit for redemption.
@@ -154,6 +156,54 @@ contract Redemption is ReentrancyGuard {
         }
     }
 
-    // FIXME
-    function redeem() external nonReentrant afterDeadline {}
+    /// @notice Redeems a set of Hashes from redemption.
+    /// @param _tokenIds The token IDs to redeem.
+    function redeem(
+        uint256[] calldata _tokenIds
+    ) external nonReentrant afterDeadline {
+        // Iterate over the list of token IDs. The token IDs should be
+        // monotonically increasing and should refer to Hashes that have already
+        // been committed. If either of these conditions are violated, we revert.
+        uint256 lastTokenId;
+        for (uint256 i = 0; i < _tokenIds.length; i++) {
+            // Ensure that the current token ID is either the first token ID to
+            // be processed or is strictly greater than the last token ID.
+            require(
+                i == 0 || _tokenIds[i] > lastTokenId,
+                "Redemption: The token IDs aren't monotonically increasing."
+            );
+            lastTokenId = _tokenIds[i];
+
+            // Ensure that the token ID refers to a commitment owned by the
+            // sender.
+            require(
+                commitments[lastTokenId] == msg.sender,
+                "Redemption: Token ID doesn't refer to a commitment."
+            );
+        }
+
+        // The amount of ether that the sender will receive is calculated as
+        //
+        // redeemAmount = _tokenIds.length * min(
+        //     totalFunding / totalCommitments,
+        //     1 ether
+        // )
+        //
+        // To increase the precision of the calculation, we process the
+        // multiplication before the division.
+        uint256 redeemAmount = min(
+            (_tokenIds.length * totalFunding) / totalCommitments,
+            _tokenIds.length * 1 ether
+        );
+        (bool success, ) = msg.sender.call{value: redeemAmount}("");
+        require(success, "Redemption: Transfer failed.");
+    }
+
+    /// @dev Gets the minimum of two numbers.
+    /// @param _a The first value.
+    /// @param _b The second value.
+    /// @return The minimum value.
+    function min(uint256 _a, uint256 _b) internal pure returns (uint256) {
+        return _a < _b ? _a : _b;
+    }
 }
