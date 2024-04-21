@@ -235,6 +235,30 @@ contract Redemption is ReentrancyGuard {
         }
     }
 
+    /// @notice Allows anyone to reclaim hashes to the HashesDAO.
+    /// @param _tokenIds The token IDs to redeem.
+    function reclaim(
+        uint256[] calldata _tokenIds
+    ) external nonReentrant afterDeadline {
+        // Iterate over the list of token IDs. The token IDs should be
+        // monotonically increasing. If the list of token IDs isn't
+        // monotonically increasing, we revert. Assuming the list is sorted,
+        // the Hashes are transferred to the HashesDAO contract.
+        uint256 lastTokenId;
+        for (uint256 i = 0; i < _tokenIds.length; i++) {
+            // Ensure that the current token ID is either the first token ID to
+            // be processed or is strictly greater than the last token ID.
+            require(
+                i == 0 || _tokenIds[i] > lastTokenId,
+                "Redemption: The token IDs aren't monotonically increasing."
+            );
+            lastTokenId = _tokenIds[i];
+
+            // Transfer the Hash to the HashesDAO.
+            hashes.transferFrom(address(this), address(hashesDAO), lastTokenId);
+        }
+    }
+
     /// @dev Gets the minimum of two numbers.
     /// @param _a The first value.
     /// @param _b The second value.
