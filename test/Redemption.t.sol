@@ -98,8 +98,8 @@ contract RedemptionTest is Test {
     function test__commit__failure__afterDeadline() external {
         // Impersonate the owner of a DAO hash that isn't a DEX Labs hash and
         // approve the redemption contract for all.
-        uint256 tokenId = 100;
-        vm.startPrank(redemption.HASHES().ownerOf(tokenId));
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
         redemption.HASHES().setApprovalForAll(address(redemption), true);
 
         // Warp to the deadline.
@@ -107,7 +107,7 @@ contract RedemptionTest is Test {
 
         // Committing the Hash should fail since the deadline has been reached.
         uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = tokenId;
+        tokenIds[0] = 259;
         vm.expectRevert(Redemption.AfterDeadline.selector);
         redemption.commit(tokenIds);
 
@@ -272,6 +272,7 @@ contract RedemptionTest is Test {
         // Ensure that the total committed value increased.
         assertEq(redemption.totalCommitments(), tokenIds.length);
 
+        // Ensure that the state was updated correctly.
         for (uint256 i = 0; i < tokenIds.length; i++) {
             // Ensure that the commitment was attributed to the sender.
             assertEq(redemption.commitments(tokenIds[i]), owner);
@@ -328,6 +329,7 @@ contract RedemptionTest is Test {
             tokenIds.length + tokenIds_.length
         );
 
+        // Ensure that the state was updated correctly.
         for (uint256 i = 0; i < tokenIds_.length; i++) {
             // Ensure that the commitment was attributed to the sender.
             assertEq(redemption.commitments(tokenIds_[i]), owner);
@@ -341,6 +343,308 @@ contract RedemptionTest is Test {
     }
 
     /// Revoke Tests ///
+
+    function test__revoke__failure__afterDeadline() external {
+        // Impersonate the owner of a DAO hash that isn't a DEX Labs hash and
+        // approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit a Hash.
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = 259;
+        redemption.commit(tokenIds);
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Revoking the Hash should fail since the deadline has been reached.
+        vm.expectRevert(Redemption.AfterDeadline.selector);
+        redemption.revoke(tokenIds);
+
+        // Warp after the deadline.
+        vm.warp(redemption.deadline() + 30 days);
+
+        // Committing the Hash should fail since the deadline has been reached.
+        vm.expectRevert(Redemption.AfterDeadline.selector);
+        redemption.revoke(tokenIds);
+    }
+
+    function test__revoke__failure__duplicateTokenIds() external {
+        // Impersonate the owner of a DAO hash that isn't a DEX Labs hash and
+        // approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit a Hash.
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = 259;
+        redemption.commit(tokenIds);
+
+        // Revoking the Hash should fail since the token IDs are duplicated.
+        uint256[] memory tokenIds_ = new uint256[](2);
+        tokenIds_[0] = 259;
+        tokenIds_[1] = 259;
+        vm.expectRevert(Redemption.UnsortedTokenIds.selector);
+        redemption.revoke(tokenIds_);
+    }
+
+    function test__revoke__failure__unsortedTokenIds() external {
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit a Hash.
+        uint256[] memory tokenIds = new uint256[](2);
+        tokenIds[0] = 259;
+        tokenIds[1] = 304;
+        redemption.commit(tokenIds);
+
+        // Revoking the Hash should fail since the token IDs are duplicated.
+        uint256[] memory tokenIds_ = new uint256[](2);
+        tokenIds_[0] = 304;
+        tokenIds_[1] = 259;
+        vm.expectRevert(Redemption.UnsortedTokenIds.selector);
+        redemption.revoke(tokenIds_);
+    }
+
+    function test__revoke__failure__uncommittedHash() external {
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Revoking the Hash before committing should fail.
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = 259;
+        vm.expectRevert(Redemption.UncommittedHash.selector);
+        redemption.revoke(tokenIds);
+    }
+
+    function test__revoke__failure__revokeTwice() external {
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit a Hash.
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = 259;
+        redemption.commit(tokenIds);
+
+        // Revoking the Hash should succeed.
+        redemption.revoke(tokenIds);
+
+        // Ensure that the total committed value went back to zero.
+        assertEq(redemption.totalCommitments(), 0);
+
+        // Ensure that the commitment was reset.
+        assertEq(redemption.commitments(tokenIds[0]), address(0));
+
+        // Ensure that the owner of the Hash is the original owner.
+        assertEq(redemption.HASHES().ownerOf(tokenIds[0]), owner);
+
+        // Revoking the Hash again should fail.
+        vm.expectRevert(Redemption.UncommittedHash.selector);
+        redemption.revoke(tokenIds);
+    }
+
+    function test__revoke__success__emptyTokenIds() external {
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Committing an empty array should succeed with no effect.
+        uint256[] memory tokenIds = new uint256[](0);
+        redemption.revoke(tokenIds);
+
+        // Ensure that the total committed value didn't change.
+        assertEq(redemption.totalCommitments(), 0);
+    }
+
+    function test__revoke__success__singleTokenId() external {
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit a Hash.
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = 259;
+        redemption.commit(tokenIds);
+
+        // Revoking the Hash should succeed.
+        redemption.revoke(tokenIds);
+
+        // Ensure that the total committed value went back to zero.
+        assertEq(redemption.totalCommitments(), 0);
+
+        // Ensure that the commitment was reset.
+        assertEq(redemption.commitments(tokenIds[0]), address(0));
+
+        // Ensure that the owner of the Hash is the original owner.
+        assertEq(redemption.HASHES().ownerOf(tokenIds[0]), owner);
+    }
+
+    function test__revoke__success__severalTokenIds() external {
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit several Hashes.
+        uint256[] memory tokenIds = new uint256[](4);
+        tokenIds[0] = 259;
+        tokenIds[1] = 304;
+        tokenIds[2] = 322;
+        tokenIds[3] = 323;
+        redemption.commit(tokenIds);
+
+        // Revoking the Hashes should succeed.
+        redemption.revoke(tokenIds);
+
+        // Ensure that the total committed value is back to zero.
+        assertEq(redemption.totalCommitments(), 0);
+
+        // Ensure that the state was updated correctly.
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            // Ensure that the commitment was reset.
+            assertEq(redemption.commitments(tokenIds[i]), address(0));
+
+            // Ensure that the owner of the Hash is the original owner.
+            assertEq(redemption.HASHES().ownerOf(tokenIds[i]), owner);
+        }
+    }
+
+    function test__revoke__success__severalTokenIds__multipleRevokes()
+        external
+    {
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit several Hashes.
+        uint256[] memory tokenIds = new uint256[](7);
+        tokenIds[0] = 259;
+        tokenIds[1] = 304;
+        tokenIds[2] = 322;
+        tokenIds[3] = 323;
+        tokenIds[4] = 471;
+        tokenIds[5] = 632;
+        tokenIds[6] = 992;
+        redemption.commit(tokenIds);
+
+        // Revoke several Hashes.
+        uint256[] memory tokenIds_ = new uint256[](4);
+        tokenIds_[0] = 259;
+        tokenIds_[1] = 304;
+        tokenIds_[2] = 322;
+        tokenIds_[3] = 323;
+        redemption.revoke(tokenIds_);
+
+        // Ensure that the total committed value decreased.
+        assertEq(
+            redemption.totalCommitments(),
+            tokenIds.length - tokenIds_.length
+        );
+
+        // Ensure that the state was updated correctly.
+        for (uint256 i = 0; i < tokenIds_.length; i++) {
+            // Ensure that the commitment was reset.
+            assertEq(redemption.commitments(tokenIds_[i]), address(0));
+
+            // Ensure that the owner of the Hash is the original owner.
+            assertEq(redemption.HASHES().ownerOf(tokenIds_[i]), owner);
+        }
+
+        // Revoke several more Hashes.
+        uint256[] memory tokenIds__ = new uint256[](3);
+        tokenIds__[0] = 471;
+        tokenIds__[1] = 632;
+        tokenIds__[2] = 992;
+        redemption.revoke(tokenIds__);
+
+        // Ensure that the total committed value decreased.
+        assertEq(
+            redemption.totalCommitments(),
+            tokenIds.length - tokenIds_.length - tokenIds__.length
+        );
+
+        // Ensure that the state was updated correctly.
+        for (uint256 i = 0; i < tokenIds__.length; i++) {
+            // Ensure that the commitment was reset.
+            assertEq(redemption.commitments(tokenIds__[i]), address(0));
+
+            // Ensure that the owner of the Hash is the original owner.
+            assertEq(redemption.HASHES().ownerOf(tokenIds__[i]), owner);
+        }
+    }
+
+    function test__revoke__success__severalTokenIds__repeatedRevokes()
+        external
+    {
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit several Hashes.
+        uint256[] memory tokenIds = new uint256[](7);
+        tokenIds[0] = 259;
+        tokenIds[1] = 304;
+        tokenIds[2] = 322;
+        tokenIds[3] = 323;
+        tokenIds[4] = 471;
+        tokenIds[5] = 632;
+        tokenIds[6] = 992;
+        redemption.commit(tokenIds);
+
+        // Revoke several Hashes.
+        redemption.revoke(tokenIds);
+
+        // Ensure that the total committed value is back to zero.
+        assertEq(redemption.totalCommitments(), 0);
+
+        // Ensure that the state was updated correctly.
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            // Ensure that the commitment was reset.
+            assertEq(redemption.commitments(tokenIds[i]), address(0));
+
+            // Ensure that the owner of the Hash is the original owner.
+            assertEq(redemption.HASHES().ownerOf(tokenIds[i]), owner);
+        }
+
+        // Commit the Hashes again.
+        redemption.commit(tokenIds);
+
+        // Revoke the Hashes again.
+        redemption.revoke(tokenIds);
+
+        // Ensure that the total committed value is back to zero.
+        assertEq(redemption.totalCommitments(), 0);
+
+        // Ensure that the state was updated correctly.
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            // Ensure that the commitment was reset.
+            assertEq(redemption.commitments(tokenIds[i]), address(0));
+
+            // Ensure that the owner of the Hash is the original owner.
+            assertEq(redemption.HASHES().ownerOf(tokenIds[i]), owner);
+        }
+    }
 
     /// Redeem Tests ///
 
