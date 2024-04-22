@@ -1580,7 +1580,354 @@ contract RedemptionTest is Test {
 
     /// Reclaim Tests ///
 
-    // FIXME
+    function test__reclaim__failure__beforeDeadline() external {
+        // Reclaiming should fail since the deadline hasn't been reached.
+        vm.expectRevert(Redemption.BeforeDeadline.selector);
+        redemption.reclaim(new uint256[](0));
+
+        // Warp to right before the deadline.
+        vm.warp(redemption.deadline() - 1);
+
+        // Reclaiming should fail since the deadline hasn't been reached.
+        vm.expectRevert(Redemption.BeforeDeadline.selector);
+        redemption.reclaim(new uint256[](0));
+    }
+
+    function test__reclaim__failure__duplicateTokenIds() external {
+        // Fund the redemption contract with the full funding amount.
+        fund(FUNDING_AMOUNT);
+
+        // Impersonate the owner of a DAO hash that isn't a DEX Labs hash and
+        // approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit a Hash.
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = 259;
+        redemption.commit(tokenIds);
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Reclaiming the Hash should fail since the token IDs are duplicated.
+        uint256[] memory tokenIds_ = new uint256[](2);
+        tokenIds_[0] = 259;
+        tokenIds_[1] = 259;
+        vm.expectRevert(Redemption.UnsortedTokenIds.selector);
+        redemption.reclaim(tokenIds_);
+    }
+
+    function test__reclaim__failure__unsortedTokenIds() external {
+        // Fund the redemption contract with the full funding amount.
+        fund(FUNDING_AMOUNT);
+
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit a Hash.
+        uint256[] memory tokenIds = new uint256[](2);
+        tokenIds[0] = 259;
+        tokenIds[1] = 304;
+        redemption.commit(tokenIds);
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Reclaiming the Hashes should fail since the token IDs are duplicated.
+        uint256[] memory tokenIds_ = new uint256[](2);
+        tokenIds_[0] = 304;
+        tokenIds_[1] = 259;
+        vm.expectRevert(Redemption.UnsortedTokenIds.selector);
+        redemption.reclaim(tokenIds_);
+    }
+
+    function test__reclaim__failure__repeatedReclaim() external {
+        // Fund the redemption contract with the full funding amount.
+        fund(FUNDING_AMOUNT);
+
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit a Hash.
+        uint256[] memory tokenIds = new uint256[](2);
+        tokenIds[0] = 259;
+        tokenIds[1] = 304;
+        redemption.commit(tokenIds);
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Reclaiming with a single token should succeed.
+        uint256[] memory tokenIds_ = new uint256[](1);
+        tokenIds_[0] = 259;
+        redemption.reclaim(tokenIds_);
+
+        // Ensure that the Hash was successfully transferred to the Hashes DAO.
+        assertEq(
+            redemption.HASHES().ownerOf(tokenIds_[0]),
+            address(redemption.HASHES_DAO())
+        );
+
+        // Reclaiming the same token again should fail.
+        vm.expectRevert();
+        redemption.reclaim(tokenIds_);
+    }
+
+    function test__reclaim__success__emptyTokenIds() external {
+        // Fund the redemption contract with the full funding amount.
+        fund(FUNDING_AMOUNT);
+
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit a Hash.
+        uint256[] memory tokenIds = new uint256[](2);
+        tokenIds[0] = 259;
+        tokenIds[1] = 304;
+        redemption.commit(tokenIds);
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Reclaiming with an empty array should succeed with no effect.
+        redemption.reclaim(new uint256[](0));
+    }
+
+    function test__reclaim__success__singleTokenId() external {
+        // Fund the redemption contract with the full funding amount.
+        fund(FUNDING_AMOUNT);
+
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit a Hash.
+        uint256[] memory tokenIds = new uint256[](2);
+        tokenIds[0] = 259;
+        tokenIds[1] = 304;
+        redemption.commit(tokenIds);
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Reclaiming with a single token should succeed.
+        uint256[] memory tokenIds_ = new uint256[](1);
+        tokenIds_[0] = 259;
+        redemption.reclaim(tokenIds_);
+
+        // Ensure that the Hash was successfully transferred to the Hashes DAO.
+        assertEq(
+            redemption.HASHES().ownerOf(tokenIds_[0]),
+            address(redemption.HASHES_DAO())
+        );
+    }
+
+    function test__reclaim__success__multipleTokenIds() external {
+        // Fund the redemption contract with the full funding amount.
+        fund(FUNDING_AMOUNT);
+
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit several Hashes.
+        uint256[] memory tokenIds = new uint256[](7);
+        tokenIds[0] = 259;
+        tokenIds[1] = 304;
+        tokenIds[2] = 322;
+        tokenIds[3] = 323;
+        tokenIds[4] = 471;
+        tokenIds[5] = 632;
+        tokenIds[6] = 992;
+        redemption.commit(tokenIds);
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Reclaiming with multiple tokens should succeed.
+        uint256[] memory tokenIds_ = new uint256[](4);
+        tokenIds_[0] = 259;
+        tokenIds_[1] = 304;
+        tokenIds_[2] = 322;
+        tokenIds_[3] = 323;
+        redemption.reclaim(tokenIds_);
+
+        // Ensure that the Hashes were successfully transferred to the Hashes DAO.
+        for (uint256 i = 0; i < tokenIds_.length; i++) {
+            assertEq(
+                redemption.HASHES().ownerOf(tokenIds_[i]),
+                address(redemption.HASHES_DAO())
+            );
+        }
+
+        // Reclaiming the other committed tokens should succeed.
+        uint256[] memory tokenIds__ = new uint256[](3);
+        tokenIds__[0] = 471;
+        tokenIds__[1] = 632;
+        tokenIds__[2] = 992;
+        redemption.reclaim(tokenIds__);
+
+        // Ensure that the Hashes were successfully transferred to the Hashes DAO.
+        for (uint256 i = 0; i < tokenIds__.length; i++) {
+            assertEq(
+                redemption.HASHES().ownerOf(tokenIds__[i]),
+                address(redemption.HASHES_DAO())
+            );
+        }
+    }
+
+    function test__reclaim__success__beforeRedemption() external {
+        // Fund the redemption contract with the full funding amount.
+        fund(FUNDING_AMOUNT);
+
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit several Hashes.
+        uint256[] memory tokenIds = new uint256[](7);
+        tokenIds[0] = 259;
+        tokenIds[1] = 304;
+        tokenIds[2] = 322;
+        tokenIds[3] = 323;
+        tokenIds[4] = 471;
+        tokenIds[5] = 632;
+        tokenIds[6] = 992;
+        redemption.commit(tokenIds);
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Reclaiming the token IDs should succeed.
+        redemption.reclaim(tokenIds);
+
+        // Ensure that the Hashes were successfully transferred to the Hashes DAO.
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            assertEq(
+                redemption.HASHES().ownerOf(tokenIds[i]),
+                address(redemption.HASHES_DAO())
+            );
+        }
+
+        // Get some of the state prior to redemption.
+        uint256 ownerBalanceBefore = owner.balance;
+        uint256 redemptionBalanceBefore = address(redemption).balance;
+        uint256 totalCommitmentsBefore = redemption.totalCommitments();
+        uint256 totalFundingBefore = redemption.totalFunding();
+
+        // Redeem the Hashes.
+        redemption.redeem(tokenIds);
+
+        // Ensure that the Hash was successfully redeemed for one ether per
+        // redeemed Hash.
+        assertEq(owner.balance, ownerBalanceBefore + tokenIds.length * 1 ether);
+        assertEq(
+            address(redemption).balance,
+            redemptionBalanceBefore - tokenIds.length * 1 ether
+        );
+
+        // Ensure that the total commitments and funding haven't changed.
+        assertEq(redemption.totalCommitments(), totalCommitmentsBefore);
+        assertEq(redemption.totalFunding(), totalFundingBefore);
+
+        // Ensure the state was updated correctly.
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            // Ensure that the commitment was reset after redemption.
+            assertEq(redemption.commitments(tokenIds[i]), address(0));
+
+            // Ensure that the Hashes DAO still owns the Hash.
+            assertEq(
+                redemption.HASHES().ownerOf(tokenIds[i]),
+                address(redemption.HASHES_DAO())
+            );
+        }
+    }
+
+    function test__reclaim__success__afterRedemption() external {
+        // Fund the redemption contract with the full funding amount.
+        fund(FUNDING_AMOUNT);
+
+        // Impersonate the owner of a several DAO hashes that aren't DEX Labs
+        // hashes and approve the redemption contract for all.
+        address owner = address(0x4C71e905c48A80f235d2332A191be2c650e6a20C);
+        vm.startPrank(owner);
+        redemption.HASHES().setApprovalForAll(address(redemption), true);
+
+        // Commit several Hashes.
+        uint256[] memory tokenIds = new uint256[](7);
+        tokenIds[0] = 259;
+        tokenIds[1] = 304;
+        tokenIds[2] = 322;
+        tokenIds[3] = 323;
+        tokenIds[4] = 471;
+        tokenIds[5] = 632;
+        tokenIds[6] = 992;
+        redemption.commit(tokenIds);
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Get some of the state prior to redemption.
+        uint256 ownerBalanceBefore = owner.balance;
+        uint256 redemptionBalanceBefore = address(redemption).balance;
+        uint256 totalCommitmentsBefore = redemption.totalCommitments();
+        uint256 totalFundingBefore = redemption.totalFunding();
+
+        // Redeem the Hashes.
+        redemption.redeem(tokenIds);
+
+        // Ensure that the Hash was successfully redeemed for one ether per
+        // redeemed Hash.
+        assertEq(owner.balance, ownerBalanceBefore + tokenIds.length * 1 ether);
+        assertEq(
+            address(redemption).balance,
+            redemptionBalanceBefore - tokenIds.length * 1 ether
+        );
+
+        // Ensure that the total commitments and funding haven't changed.
+        assertEq(redemption.totalCommitments(), totalCommitmentsBefore);
+        assertEq(redemption.totalFunding(), totalFundingBefore);
+
+        // Ensure the state was updated correctly.
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            // Ensure that the commitment was reset after redemption.
+            assertEq(redemption.commitments(tokenIds[i]), address(0));
+
+            // Ensure that the redemption contract still owns the Hash.
+            assertEq(
+                redemption.HASHES().ownerOf(tokenIds[i]),
+                address(redemption)
+            );
+        }
+
+        // Reclaiming the token IDs should succeed.
+        redemption.reclaim(tokenIds);
+
+        // Ensure that the Hashes were successfully transferred to the Hashes DAO.
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            assertEq(
+                redemption.HASHES().ownerOf(tokenIds[i]),
+                address(redemption.HASHES_DAO())
+            );
+        }
+    }
 
     /// Helpers ///
 
