@@ -227,9 +227,12 @@ contract Redemption is ReentrancyGuard {
             return;
         }
 
+        // Set the flag to indicate that funds were drawn.
+        wasDrawn = true;
+
         // If the price per commitment is less than one ether, all of the ether
         // will be consumed by redemptions, and we can exit early.
-        if (totalFunding / totalCommitments < 1 ether) {
+        if (totalFunding / totalCommitments <= 1 ether) {
             return;
         }
 
@@ -241,9 +244,6 @@ contract Redemption is ReentrancyGuard {
         // unused funds to the hashes DAO.
         uint256 redeemFunds = totalCommitments * 1 ether;
         if (totalFunding > redeemFunds) {
-            // Set the flag to indicate that funds were drawn.
-            wasDrawn = true;
-
             // Transfer the unused funds to the HashesDAO.
             (bool success, ) = address(HASHES_DAO).call{
                 value: totalFunding - redeemFunds

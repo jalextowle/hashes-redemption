@@ -1328,7 +1328,259 @@ contract RedemptionTest is Test {
 
     /// Draw Tests ///
 
+    function test__draw__failure__beforeDeadline() external {
+        // Fund the redemption contract with 10 ether.
+        fund(10 ether);
+
+        // Drawing the ether should fail before the deadline.
+        vm.expectRevert(Redemption.BeforeDeadline.selector);
+        redemption.draw();
+
+        // Warp to right before the deadline.
+        vm.warp(redemption.deadline() - 1);
+
+        // Drawing the ether should fail before the deadline.
+        vm.expectRevert(Redemption.BeforeDeadline.selector);
+        redemption.draw();
+    }
+
+    function test__draw__success__noFundsToDraw() external {
+        // Fund the redemption contract with 10 ether.
+        fund(10 ether);
+
+        // Iterate through the first 25 Hashes that aren't DEX Labs hashes.
+        // For each of these hashes that isn't deactivated, commit the hash.
+        IHashes hashes = redemption.HASHES();
+        for (uint256 i = 100; i < 125; i++) {
+            if (!hashes.deactivated(i)) {
+                // Impersonate the owner of the Hash.
+                vm.startPrank(hashes.ownerOf(i));
+                hashes.setApprovalForAll(address(redemption), true);
+
+                // Commit the Hash.
+                uint256[] memory tokenIds = new uint256[](1);
+                tokenIds[0] = i;
+                redemption.commit(tokenIds);
+            }
+        }
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Get some state before drawing.
+        uint256 hashesDAOBalanceBefore = address(redemption.HASHES_DAO())
+            .balance;
+        uint256 redemptionBalanceBefore = address(redemption).balance;
+
+        // Drawing funds should succeed. Since all of the funds were consumed
+        // by redemptions, no ether should be transferred.
+        redemption.draw();
+
+        // Ensure that the `wasDrawn` status was set to true.
+        assertEq(redemption.wasDrawn(), true);
+
+        // Ensure that no ether was transferred.
+        assertEq(
+            address(redemption.HASHES_DAO()).balance,
+            hashesDAOBalanceBefore
+        );
+        assertEq(address(redemption).balance, redemptionBalanceBefore);
+    }
+
+    function test__draw__success__fundsToDraw() external {
+        // Fund the redemption contract with 10 ether.
+        fund(10 ether);
+
+        // Iterate through the first 8 Hashes that aren't DEX Labs hashes.
+        // For each of these hashes that isn't deactivated, commit the hash.
+        IHashes hashes = redemption.HASHES();
+        for (uint256 i = 100; i < 108; i++) {
+            if (!hashes.deactivated(i)) {
+                // Impersonate the owner of the Hash.
+                vm.startPrank(hashes.ownerOf(i));
+                hashes.setApprovalForAll(address(redemption), true);
+
+                // Commit the Hash.
+                uint256[] memory tokenIds = new uint256[](1);
+                tokenIds[0] = i;
+                redemption.commit(tokenIds);
+            }
+        }
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Get some state before drawing.
+        uint256 hashesDAOBalanceBefore = address(redemption.HASHES_DAO())
+            .balance;
+        uint256 redemptionBalanceBefore = address(redemption).balance;
+
+        // Drawing funds should succeed. Since all of the funds were consumed
+        // by redemptions, no ether should be transferred.
+        redemption.draw();
+
+        // Ensure that the `wasDrawn` status was set to true.
+        assertEq(redemption.wasDrawn(), true);
+
+        // Ensure that 2 ether was transferred.
+        assertEq(
+            address(redemption.HASHES_DAO()).balance,
+            hashesDAOBalanceBefore + 2 ether
+        );
+        assertEq(
+            address(redemption).balance,
+            redemptionBalanceBefore - 2 ether
+        );
+    }
+
+    function test__draw__success__idempotentRedraw() external {
+        // Fund the redemption contract with 10 ether.
+        fund(10 ether);
+
+        // Iterate through the first 8 Hashes that aren't DEX Labs hashes.
+        // For each of these hashes that isn't deactivated, commit the hash.
+        IHashes hashes = redemption.HASHES();
+        for (uint256 i = 100; i < 108; i++) {
+            if (!hashes.deactivated(i)) {
+                // Impersonate the owner of the Hash.
+                vm.startPrank(hashes.ownerOf(i));
+                hashes.setApprovalForAll(address(redemption), true);
+
+                // Commit the Hash.
+                uint256[] memory tokenIds = new uint256[](1);
+                tokenIds[0] = i;
+                redemption.commit(tokenIds);
+            }
+        }
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Get some state before drawing.
+        uint256 hashesDAOBalanceBefore = address(redemption.HASHES_DAO())
+            .balance;
+        uint256 redemptionBalanceBefore = address(redemption).balance;
+
+        // Drawing funds should succeed. Since all of the funds were consumed
+        // by redemptions, no ether should be transferred.
+        redemption.draw();
+
+        // Ensure that the `wasDrawn` status was set to true.
+        assertEq(redemption.wasDrawn(), true);
+
+        // Ensure that 2 ether was transferred.
+        assertEq(
+            address(redemption.HASHES_DAO()).balance,
+            hashesDAOBalanceBefore + 2 ether
+        );
+        assertEq(
+            address(redemption).balance,
+            redemptionBalanceBefore - 2 ether
+        );
+
+        // Get some state before drawing.
+        hashesDAOBalanceBefore = address(redemption.HASHES_DAO()).balance;
+        redemptionBalanceBefore = address(redemption).balance;
+
+        // Draw again. This time, no funds should be drawn.
+        redemption.draw();
+
+        // Ensure that the `wasDrawn` status didn't change.
+        assertEq(redemption.wasDrawn(), true);
+
+        // Ensure that no funds were transferred.
+        assertEq(
+            address(redemption.HASHES_DAO()).balance,
+            hashesDAOBalanceBefore
+        );
+        assertEq(address(redemption).balance, redemptionBalanceBefore);
+    }
+
+    function test__draw__success__afterRedemption() external {
+        // Fund the redemption contract with 10 ether.
+        fund(10 ether);
+
+        // Iterate through the first 8 Hashes that aren't DEX Labs hashes.
+        // For each of these hashes that isn't deactivated, commit the hash.
+        IHashes hashes = redemption.HASHES();
+        for (uint256 i = 100; i < 108; i++) {
+            if (!hashes.deactivated(i)) {
+                // Impersonate the owner of the Hash.
+                vm.startPrank(hashes.ownerOf(i));
+                hashes.setApprovalForAll(address(redemption), true);
+
+                // Commit the Hash.
+                uint256[] memory tokenIds = new uint256[](1);
+                tokenIds[0] = i;
+                redemption.commit(tokenIds);
+            }
+        }
+
+        // Warp to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Iterate through the first 8 Hashes that aren't DEX Labs hashes.
+        // For each of these hashes that was committed, redeem the hash. Since
+        // less than or equal to 8 hashes were redeemed, each hash should
+        // receive 1 ether.
+        for (uint256 i = 100; i < 108; i++) {
+            address committer = redemption.commitments(i);
+            if (committer != address(0)) {
+                // Impersonate the committer of the Hash.
+                vm.startPrank(committer);
+
+                // Get some state before redeeming the Hash.
+                uint256 committerEtherBalance = committer.balance;
+
+                // Redeem the Hash.
+                uint256[] memory tokenIds = new uint256[](1);
+                tokenIds[0] = i;
+                redemption.redeem(tokenIds);
+
+                // Ensure that the owner received one ether for their Hash.
+                assertEq(committer.balance, committerEtherBalance + 1 ether);
+
+                // Ensure that the commitment was reset after redemption.
+                assertEq(redemption.commitments(tokenIds[0]), address(0));
+
+                // Ensure that the redemption contract still owns the Hash.
+                assertEq(
+                    redemption.HASHES().ownerOf(tokenIds[0]),
+                    address(redemption)
+                );
+            }
+        }
+
+        // Get some state before drawing.
+        uint256 hashesDAOBalanceBefore = address(redemption.HASHES_DAO())
+            .balance;
+        uint256 redemptionBalanceBefore = address(redemption).balance;
+
+        // Drawing funds should succeed. Since all of the funds were consumed
+        // by redemptions, no ether should be transferred.
+        redemption.draw();
+
+        // Ensure that the `wasDrawn` status was set to true.
+        assertEq(redemption.wasDrawn(), true);
+
+        // Ensure that 2 ether was transferred.
+        assertEq(
+            address(redemption.HASHES_DAO()).balance,
+            hashesDAOBalanceBefore + 2 ether
+        );
+        assertEq(
+            address(redemption).balance,
+            redemptionBalanceBefore - 2 ether
+        );
+
+        // Get some state before drawing.
+        hashesDAOBalanceBefore = address(redemption.HASHES_DAO()).balance;
+        redemptionBalanceBefore = address(redemption).balance;
+    }
+
     /// Reclaim Tests ///
+
+    // FIXME
 
     /// Helpers ///
 
