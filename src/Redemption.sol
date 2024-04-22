@@ -255,7 +255,7 @@ contract Redemption is ReentrancyGuard {
     }
 
     /// @notice Allows anyone to reclaim hashes to the HashesDAO.
-    /// @param _tokenIds The token IDs to redeem.
+    /// @param _tokenIds The token IDs to reclaim.
     function reclaim(
         uint256[] calldata _tokenIds
     ) external nonReentrant afterDeadline {
