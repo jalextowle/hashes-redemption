@@ -131,7 +131,7 @@ contract Redemption is ReentrancyGuard {
             }
 
             // Take custody of the Hashes token.
-            HASHES.safeTransferFrom(msg.sender, address(this), lastTokenId);
+            HASHES.transferFrom(msg.sender, address(this), lastTokenId);
 
             // Process the commitment.
             totalCommitments += 1;
