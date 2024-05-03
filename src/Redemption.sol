@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.20;
 
+import {Math} from "openzeppelin/utils/math/Math.sol";
 import {ReentrancyGuard} from "solmate/utils/ReentrancyGuard.sol";
 import {IHashes} from "./interfaces/IHashes.sol";
 import {IHashesDAO} from "./interfaces/IHashesDAO.sol";
@@ -43,29 +44,55 @@ contract Redemption is ReentrancyGuard {
     ///         back to the HashesDAO.
     bool public wasDrawn;
 
-    /// @notice Thrown when the duration is invalid.
-    error InvalidDuration();
-
     /// @notice Thrown when the current timestamp is after the deadline but the
     ///         function can only be called before the deadline.
     error AfterDeadline();
+
+    /// @notice Thrown when the excess funds were already drawn to the DAO.
+    error AlreadyDrawn();
 
     /// @notice Thrown when the current timestamp is before the deadline but the
     ///         function can only be called after the deadline.
     error BeforeDeadline();
 
-    /// @notice Thrown when the token IDs aren't monotonically increasing.
-    error UnsortedTokenIds();
-
     /// @notice Thrown when the hash isn't eligible for redemption.
     error IneligibleHash();
+
+    /// @notice Thrown when the duration is invalid.
+    error InvalidDuration();
+
+    /// @notice Thrown when ether can't be transferred.
+    error TransferFailed();
+
+    /// @notice Thrown when the token IDs aren't monotonically increasing.
+    error UnsortedTokenIds();
 
     /// @notice Thrown when a hash wasn't committed by the sender or wasn't
     ///         committed at all.
     error UncommittedHash();
 
-    /// @notice Thrown when ether can't be transferred.
-    error TransferFailed();
+    /// @dev Ensures that the function is being called before the deadline.
+    modifier beforeDeadline() {
+        if (block.timestamp >= deadline) {
+            revert AfterDeadline();
+        }
+        _;
+    }
+
+    /// @dev Ensures that the function is being called after the deadline.
+    modifier afterDeadline() {
+        if (block.timestamp < deadline) {
+            revert BeforeDeadline();
+        }
+        _;
+    }
+
+    modifier notDrawn() {
+        if (wasDrawn) {
+            revert AlreadyDrawn();
+        }
+        _;
+    }
 
     /// @notice Instantiates the Hashes redemption contract.
     /// @param _duration The duration of the redemption.
@@ -77,20 +104,6 @@ contract Redemption is ReentrancyGuard {
 
         // Initialize the deadline.
         deadline = block.timestamp + _duration;
-    }
-
-    modifier beforeDeadline() {
-        if (block.timestamp >= deadline) {
-            revert AfterDeadline();
-        }
-        _;
-    }
-
-    modifier afterDeadline() {
-        if (block.timestamp < deadline) {
-            revert BeforeDeadline();
-        }
-        _;
     }
 
     /// @notice Allows the contract to receive ether before the deadline.
@@ -115,10 +128,7 @@ contract Redemption is ReentrancyGuard {
         for (uint256 i = 0; i < _tokenIds.length; i++) {
             // Ensure that the current token ID is either the first token ID to
             // be processed or is strictly greater than the last token ID.
-            if (i != 0 && _tokenIds[i] <= lastTokenId) {
-                revert UnsortedTokenIds();
-            }
-            lastTokenId = _tokenIds[i];
+            lastTokenId = _verifyTokenId(_tokenIds, i, lastTokenId);
 
             // Ensure that the token ID refers to an active DAO hash that is
             // not a DEX Labs Hash.
@@ -153,10 +163,7 @@ contract Redemption is ReentrancyGuard {
         for (uint256 i = 0; i < _tokenIds.length; i++) {
             // Ensure that the current token ID is either the first token ID to
             // be processed or is strictly greater than the last token ID.
-            if (i != 0 && _tokenIds[i] <= lastTokenId) {
-                revert UnsortedTokenIds();
-            }
-            lastTokenId = _tokenIds[i];
+            lastTokenId = _verifyTokenId(_tokenIds, i, lastTokenId);
 
             // Ensure that the token ID refers to a commitment owned by the
             // sender.
@@ -185,10 +192,7 @@ contract Redemption is ReentrancyGuard {
         for (uint256 i = 0; i < _tokenIds.length; i++) {
             // Ensure that the current token ID is either the first token ID to
             // be processed or is strictly greater than the last token ID.
-            if (i != 0 && _tokenIds[i] <= lastTokenId) {
-                revert UnsortedTokenIds();
-            }
-            lastTokenId = _tokenIds[i];
+            lastTokenId = _verifyTokenId(_tokenIds, i, lastTokenId);
 
             // Ensure that the token ID refers to a commitment owned by the
             // sender.
@@ -209,7 +213,7 @@ contract Redemption is ReentrancyGuard {
         //
         // To increase the precision of the calculation, we process the
         // multiplication before the division.
-        uint256 redeemAmount = min(
+        uint256 redeemAmount = Math.min(
             (_tokenIds.length * totalFunding) / totalCommitments,
             _tokenIds.length * 1 ether
         );
@@ -221,12 +225,7 @@ contract Redemption is ReentrancyGuard {
 
     /// @notice Allows anyone to transfer any ether that isn't needed to process
     ///         redemptions to the DAO.
-    function draw() external nonReentrant afterDeadline {
-        // If funds have already been drawn, we can exit early.
-        if (wasDrawn) {
-            return;
-        }
-
+    function draw() external notDrawn nonReentrant afterDeadline {
         // Set the flag to indicate that funds were drawn.
         wasDrawn = true;
 
@@ -243,14 +242,13 @@ contract Redemption is ReentrancyGuard {
         // If the unused funds amount is greater than zero, we transfer the
         // unused funds to the hashes DAO.
         uint256 redeemFunds = totalCommitments * 1 ether;
-        if (totalFunding > redeemFunds) {
-            // Transfer the unused funds to the HashesDAO.
-            (bool success, ) = address(HASHES_DAO).call{
-                value: totalFunding - redeemFunds
-            }("");
-            if (!success) {
-                revert TransferFailed();
-            }
+
+        // Transfer the unused funds to the HashesDAO.
+        (bool success, ) = address(HASHES_DAO).call{
+            value: totalFunding - redeemFunds
+        }("");
+        if (!success) {
+            revert TransferFailed();
         }
     }
 
@@ -267,10 +265,7 @@ contract Redemption is ReentrancyGuard {
         for (uint256 i = 0; i < _tokenIds.length; i++) {
             // Ensure that the current token ID is either the first token ID to
             // be processed or is strictly greater than the last token ID.
-            if (i != 0 && _tokenIds[i] <= lastTokenId) {
-                revert UnsortedTokenIds();
-            }
-            lastTokenId = _tokenIds[i];
+            lastTokenId = _verifyTokenId(_tokenIds, i, lastTokenId);
 
             // Transfer the Hash to the HashesDAO.
             HASHES.transferFrom(
@@ -281,11 +276,22 @@ contract Redemption is ReentrancyGuard {
         }
     }
 
-    /// @dev Gets the minimum of two numbers.
-    /// @param _a The first value.
-    /// @param _b The second value.
-    /// @return The minimum value.
-    function min(uint256 _a, uint256 _b) internal pure returns (uint256) {
-        return _a < _b ? _a : _b;
+    /// @dev Verify the next entry in a list of token IDs.
+    /// @param _tokenIds The list of token IDs.
+    /// @param _idx The index of the item in the list.
+    /// @param _lastTokenId The previous token ID in the list.
+    /// @return The token ID at the specified index in the list.
+    function _verifyTokenId(
+        uint256[] memory _tokenIds,
+        uint256 _idx,
+        uint256 _lastTokenId
+    ) internal pure returns (uint256) {
+        // Ensure that the current token ID is either the first token ID to
+        // be processed or is strictly greater than the last token ID.
+        uint256 tokenId = _tokenIds[_idx];
+        if (_idx != 0 && tokenId <= _lastTokenId) {
+            revert UnsortedTokenIds();
+        }
+        return tokenId;
     }
 }
