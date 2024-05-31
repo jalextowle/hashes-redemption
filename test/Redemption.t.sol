@@ -44,6 +44,51 @@ contract RedemptionTest is Test {
         assertEq(redemption.deadline(), currentBlockTime + duration);
     }
 
+    /// Fallback Tests ///
+
+    function test__fallback__failure__afterDeadline() external {
+        // Increase the time to the deadline.
+        vm.warp(redemption.deadline());
+
+        // Increase the funder's balance of ether.
+        vm.deal(FUNDER, 1_000e18);
+
+        // Attempting to send ether to the contract at the deadline should fail.
+        (bool success, bytes memory returndata) = address(redemption).call{
+            value: 1_000e18
+        }(abi.encodePacked(bytes4(keccak256("ignored"))));
+        assertEq(success, false);
+        assertEq(
+            returndata,
+            abi.encodeWithSelector(Redemption.AfterDeadline.selector)
+        );
+
+        // Increase the time to the deadline.
+        vm.warp(redemption.deadline() + 30 days);
+
+        // Attempting to send ether to the contract after the deadline should fail.
+        (success, returndata) = address(redemption).call{value: 1_000e18}("");
+        assertEq(success, false);
+        assertEq(
+            returndata,
+            abi.encodeWithSelector(Redemption.AfterDeadline.selector)
+        );
+    }
+
+    function test__fallback__success() external {
+        // Increase the funder's balance of ether.
+        vm.deal(FUNDER, 1_000e18);
+
+        // Sending ether to the contract before the deadline should succeed.
+        (bool success, ) = address(redemption).call{value: 1_000e18}(
+            abi.encodePacked(bytes4(keccak256("ignored")))
+        );
+        assertEq(success, true);
+
+        // The contract's total funding should be equal to its balance of ether.
+        assertEq(redemption.totalFunding(), address(redemption).balance);
+    }
+
     /// Receive Tests ///
 
     function test__receive__failure__afterDeadline() external {
