@@ -107,6 +107,12 @@ contract Redemption is ReentrancyGuard {
     }
 
     /// @notice Allows the contract to receive ether before the deadline.
+    fallback() external payable beforeDeadline {
+        // Increase the total funding by the message value.
+        totalFunding += msg.value;
+    }
+
+    /// @notice Allows the contract to receive ether before the deadline.
     receive() external payable beforeDeadline {
         // Increase the total funding by the message value.
         totalFunding += msg.value;
