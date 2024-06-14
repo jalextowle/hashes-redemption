@@ -47,6 +47,10 @@ You can redeem your Hashes using the `redeem` function on the [Hashes Redemption
     - You can find this by looking up your NFT on OpenSea. For example, the token ID of [this NFT](https://opensea.io/assets/ethereum/0xd07e72b00431af84ad438ca995fd9a7f0207542d/455) is #455.
 - I can't receive ether at my address. Can I still redeem my Hash?
     - Yes, you can still redeem your Hash, but you will need to transfer it to another address that can receive ether in order to claim your redemption reward.
+- How do I input a list of numbers into Etherscan?
+    - Let's say that you want to input the list of numbers 1, 2, 3, and 5. You can input this as `[1, 2, 3, 5]` through the Etherscan UI.
+- I input a list into Etherscan like this `[999, 121, 343]`, and it's not working.
+    - Your list must be sorted in ascending order. Re-order the list to be `[121, 343, 999]`.
 
 ## Developers
 
